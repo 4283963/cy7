@@ -205,6 +205,62 @@
             margin-top: 6px;
             text-align: center;
         }
+
+        .burn-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px;
+            margin: 12px 0 4px;
+            background: #fff8e6;
+            border: 1px solid #ffd980;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.2s ease, border-color 0.2s ease;
+            user-select: none;
+        }
+
+        .burn-checkbox:hover {
+            background: #fff3d1;
+            border-color: #ffcc5c;
+        }
+
+        .burn-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #ff9500;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .burn-checkbox span {
+            font-size: 14px;
+            color: #5a4520;
+            line-height: 1.4;
+        }
+
+        .burn-notice {
+            margin: 10px 0 4px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-size: 14px;
+            text-align: center;
+            display: none;
+        }
+
+        .burn-notice.on {
+            display: block;
+            background: #fff8e6;
+            color: #b57700;
+            border: 1px solid #ffd980;
+        }
+
+        .burn-notice.burned {
+            display: block;
+            background: #ffe8e8;
+            color: #d70015;
+            border: 1px solid #ffb3b3;
+        }
     </style>
 </head>
 <body>
@@ -219,10 +275,15 @@
         <div class="panel active" id="save-panel">
             <div class="label">粘贴你要保存的内容</div>
             <textarea id="content-input" placeholder="在这里输入或粘贴文本内容..."></textarea>
+            <label class="burn-checkbox">
+                <input type="checkbox" id="burn-input">
+                <span>安全阅后即焚（内容被读取一次后立即永久删除）</span>
+            </label>
             <button class="primary" id="save-btn">生成提取码</button>
             <div class="result" id="save-result">
                 <div class="label">你的提取码是</div>
                 <div class="code-display" id="code-display"></div>
+                <div class="burn-notice" id="burn-notice"></div>
                 <button class="copy-btn" id="copy-code-btn">复制提取码</button>
                 <div class="hint">提取码 24 小时内有效</div>
             </div>
@@ -234,6 +295,7 @@
             <input type="text" id="code-input" placeholder="0000" maxlength="4" inputmode="numeric">
             <button class="primary" id="get-btn">提取内容</button>
             <div class="result" id="get-result">
+                <div class="burn-notice burned" id="burned-notice" style="display:none;">🔥 阅后即焚：此内容已被永久删除，无法再次查看</div>
                 <div class="label">提取到的内容</div>
                 <div class="content-display" id="content-display"></div>
                 <button class="copy-btn" id="copy-content-btn">复制内容</button>
@@ -264,15 +326,19 @@
             document.getElementById('get-error').textContent = '';
             document.getElementById('save-result').classList.remove('show');
             document.getElementById('get-result').classList.remove('show');
+            document.getElementById('burn-notice').className = 'burn-notice';
+            document.getElementById('burned-notice').style.display = 'none';
         }
 
         async function saveContent() {
             const content = document.getElementById('content-input').value.trim();
+            const burnAfterRead = document.getElementById('burn-input').checked;
             const errorEl = document.getElementById('save-error');
             const resultEl = document.getElementById('save-result');
 
             errorEl.textContent = '';
             resultEl.classList.remove('show');
+            document.getElementById('burn-notice').className = 'burn-notice';
 
             if (!content) {
                 errorEl.textContent = '请输入要保存的内容';
@@ -288,13 +354,18 @@
                 const response = await fetch(`${API_BASE}/save`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content })
+                    body: JSON.stringify({ content, burnAfterRead })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
                     document.getElementById('code-display').textContent = data.code;
+                    if (data.burnAfterRead) {
+                        const n = document.getElementById('burn-notice');
+                        n.textContent = '🔒 此内容已开启阅后即焚，仅可被读取一次';
+                        n.className = 'burn-notice on';
+                    }
                     resultEl.classList.add('show');
                 } else {
                     errorEl.textContent = data.error || '保存失败';
@@ -308,9 +379,11 @@
             const code = document.getElementById('code-input').value.trim();
             const errorEl = document.getElementById('get-error');
             const resultEl = document.getElementById('get-result');
+            const burnedNotice = document.getElementById('burned-notice');
 
             errorEl.textContent = '';
             resultEl.classList.remove('show');
+            burnedNotice.style.display = 'none';
 
             if (!code || code.length !== 4) {
                 errorEl.textContent = '请输入 4 位提取码';
@@ -328,6 +401,9 @@
 
                 if (response.ok) {
                     document.getElementById('content-display').textContent = data.content;
+                    if (data.burned) {
+                        burnedNotice.style.display = 'block';
+                    }
                     resultEl.classList.add('show');
                 } else {
                     errorEl.textContent = data.error || '提取失败';

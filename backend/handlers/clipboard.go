@@ -25,15 +25,18 @@ func NewClipboardHandler(redisClient *redis.Client) *ClipboardHandler {
 }
 
 type SaveRequest struct {
-	Content string `json:"content"`
+	Content        string `json:"content"`
+	BurnAfterRead  bool   `json:"burnAfterRead"`
 }
 
 type SaveResponse struct {
-	Code string `json:"code"`
+	Code           string `json:"code"`
+	BurnAfterRead  bool   `json:"burnAfterRead,omitempty"`
 }
 
 type GetResponse struct {
 	Content string `json:"content"`
+	Burned  bool   `json:"burned,omitempty"`
 }
 
 type ErrorResponse struct {
@@ -85,7 +88,7 @@ func (h *ClipboardHandler) SaveContent(c *gin.Context) {
 		return
 	}
 
-	code, err := h.redisClient.SaveContent(content, h.expiration)
+	code, err := h.redisClient.SaveContent(content, req.BurnAfterRead, h.expiration)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error: "保存失败: " + err.Error(),
@@ -94,7 +97,8 @@ func (h *ClipboardHandler) SaveContent(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, SaveResponse{
-		Code: code,
+		Code:          code,
+		BurnAfterRead: req.BurnAfterRead,
 	})
 }
 
@@ -117,7 +121,7 @@ func (h *ClipboardHandler) GetContent(c *gin.Context) {
 		}
 	}
 
-	content, err := h.redisClient.GetContent(code)
+	result, err := h.redisClient.GetContent(code)
 	if err != nil {
 		c.JSON(http.StatusNotFound, ErrorResponse{
 			Error: err.Error(),
@@ -126,7 +130,8 @@ func (h *ClipboardHandler) GetContent(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, GetResponse{
-		Content: content,
+		Content: result.Content,
+		Burned:  result.Burned,
 	})
 }
 
