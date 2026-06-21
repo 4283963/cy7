@@ -1,8 +1,12 @@
 package handlers
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"cloudclipboard/redis"
@@ -21,7 +25,7 @@ func NewClipboardHandler(redisClient *redis.Client) *ClipboardHandler {
 }
 
 type SaveRequest struct {
-	Content string `json:"content" binding:"required,min=1,max=10000"`
+	Content string `json:"content"`
 }
 
 type SaveResponse struct {
@@ -37,18 +41,54 @@ type ErrorResponse struct {
 }
 
 func (h *ClipboardHandler) SaveContent(c *gin.Context) {
-	var req SaveRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
-			Error: "Invalid request body. Content must be 1-10000 characters.",
+			Error: "无法读取请求体: " + err.Error(),
+		})
+		return
+	}
+	defer c.Request.Body.Close()
+
+	if len(body) == 0 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: "请求体为空，请输入要保存的内容",
 		})
 		return
 	}
 
-	code, err := h.redisClient.SaveContent(req.Content, h.expiration)
+	var req SaveRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: "请求格式错误，无法解析 JSON: " + err.Error(),
+		})
+		return
+	}
+
+	content := req.Content
+	if !utf8.ValidString(content) {
+		content = strings.ToValidUTF8(content, "")
+	}
+
+	content = strings.TrimSpace(content)
+	if content == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: "内容不能为空",
+		})
+		return
+	}
+
+	if len(content) > 10000 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: "内容太长，最多支持 10000 字符",
+		})
+		return
+	}
+
+	code, err := h.redisClient.SaveContent(content, h.expiration)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error: "Failed to save content: " + err.Error(),
+			Error: "保存失败: " + err.Error(),
 		})
 		return
 	}
@@ -63,7 +103,7 @@ func (h *ClipboardHandler) GetContent(c *gin.Context) {
 
 	if len(code) != 4 {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
-			Error: "Invalid code format. Code must be 4 digits.",
+			Error: "提取码格式错误，必须是 4 位数字",
 		})
 		return
 	}
@@ -71,7 +111,7 @@ func (h *ClipboardHandler) GetContent(c *gin.Context) {
 	for _, ch := range code {
 		if ch < '0' || ch > '9' {
 			c.JSON(http.StatusBadRequest, ErrorResponse{
-				Error: "Invalid code format. Code must contain only digits.",
+				Error: "提取码格式错误，只能包含数字",
 			})
 			return
 		}

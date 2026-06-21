@@ -9,10 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var (
-	ctx = context.Background()
-	rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-)
+var ctx = context.Background()
 
 type Client struct {
 	rdb *redis.Client
@@ -33,27 +30,22 @@ func NewClient(addr, password string, db int) (*Client, error) {
 }
 
 func generateCode() string {
-	return fmt.Sprintf("%04d", rng.Intn(10000))
+	return fmt.Sprintf("%04d", rand.Intn(10000))
 }
 
 func (c *Client) SaveContent(content string, expiration time.Duration) (string, error) {
-	var code string
 	maxAttempts := 10
 
 	for i := 0; i < maxAttempts; i++ {
-		code = generateCode()
+		code := generateCode()
 		key := fmt.Sprintf("clip:%s", code)
 
-		exists, err := c.rdb.Exists(ctx, key).Result()
+		ok, err := c.rdb.SetNX(ctx, key, content, expiration).Result()
 		if err != nil {
-			return "", fmt.Errorf("failed to check key existence: %w", err)
+			return "", fmt.Errorf("failed to save content: %w", err)
 		}
 
-		if exists == 0 {
-			err = c.rdb.Set(ctx, key, content, expiration).Err()
-			if err != nil {
-				return "", fmt.Errorf("failed to save content: %w", err)
-			}
+		if ok {
 			return code, nil
 		}
 	}

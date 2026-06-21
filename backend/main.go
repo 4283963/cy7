@@ -51,7 +51,11 @@ func main() {
 	})
 
 	frontendDir, _ := filepath.Abs("../frontend")
-	r.Static("/", frontendDir)
+	indexFile := filepath.Join(frontendDir, "index.html")
+
+	r.GET("/", func(c *gin.Context) {
+		c.File(indexFile)
+	})
 
 	api := r.Group("/api")
 	{
@@ -59,6 +63,10 @@ func main() {
 		api.POST("/save", clipboardHandler.SaveContent)
 		api.GET("/get/:code", clipboardHandler.GetContent)
 	}
+
+	r.NoRoute(func(c *gin.Context) {
+		c.File(indexFile)
+	})
 
 	log.Printf("Server starting on port %s...", port)
 	log.Printf("Frontend served from: %s", frontendDir)
